@@ -32,7 +32,7 @@ namespace UsersAPI.Web.Services
                 issuer: _config["Jwt:Issuer"],
                 audience: _config["Jwt:Audience"],
                 claims: claims,
-                expires: DateTime.UtcNow.AddMinutes(double.Parse(_config["JwtExpirationsInMinutes"]!)),
+                expires: DateTime.UtcNow.AddMinutes(double.Parse(_config["Jwt:ExpirationInMinutes"]!)),
                 signingCredentials: creds
                 );
 

@@ -1,13 +1,16 @@
+using MassTransit;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using UsersAPI.Domain;
 using UsersAPI.Infra;
+using UsersAPI.Web.Endpoints;
 using UsersAPI.Web.Extensions;
-
+using UsersAPI.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddScoped<AppDbContext, AppDbContext>();
+builder.Services.AddScoped<TokenService>();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<AppDbContext>(options => 
@@ -28,16 +31,30 @@ builder.Services.AddIdentityCore<User>(options =>
 
 builder.Services.AddDataProtection();
 
-// Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+# region MassTransit
+builder.Services.AddMassTransit(x =>
+{
+    x.UsingRabbitMq((context, cfg) =>
+    {
+        cfg.Host(builder.Configuration["RabbitMq:Host"] ?? "localhost", "/", h =>
+        {
+            h.Username("admin");
+            h.Password("admin123");
+        });
+
+        cfg.ConfigureEndpoints(context);
+    });
+});
+# endregion
 
 
 var app = builder.Build();
 
 await app.ApplyMigrationsAndSeed();
+app.MapUserEndpoints();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -48,33 +65,12 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
 
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast = Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.WithOpenApi();
 
 
 
 app.Run();
 
-internal record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+public record LoginRequest(string Email, string Password);
 
 

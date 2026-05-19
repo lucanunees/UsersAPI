@@ -8,6 +8,11 @@ services:
       - "5000:80"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=postgres;Username=fcg;Password=fcgpw
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
     image: postgres:16
     container_name: fcg-postgres2

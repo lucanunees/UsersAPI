@@ -6,6 +6,8 @@ using UsersAPI.Infra;
 using UsersAPI.Web.Endpoints;
 using UsersAPI.Web.Extensions;
 using UsersAPI.Web.Services;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,6 +35,7 @@ builder.Services.AddDataProtection();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddControllers();
 
 # region MassTransit
 builder.Services.AddMassTransit(x =>
@@ -50,6 +53,18 @@ builder.Services.AddMassTransit(x =>
 });
 # endregion
 
+# region Prometheus
+
+// Configuração do OpenTelemetry
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics
+        .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("UsersAPI"))
+        .AddAspNetCoreInstrumentation() // Métricas de requisições HTTP
+        .AddHttpClientInstrumentation() // Métricas de chamadas para outros microsserviços
+        .AddRuntimeInstrumentation()   // Métricas de CPU e Memória do .NET
+        .AddPrometheusExporter());     // Expõe as métricas
+
+# endregion
 
 var app = builder.Build();
 
@@ -65,9 +80,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+// Mapeia o endpoint para o Prometheus coletar
+app.MapPrometheusScrapingEndpoint();
 
-
-
+app.MapControllers();
 
 app.Run();
 

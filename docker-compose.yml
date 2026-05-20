@@ -8,6 +8,11 @@ services:
       - "5000:80"
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=postgres;Username=fcg;Password=fcgpw
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   postgres:
     image: postgres:16
     container_name: fcg-postgres2
@@ -20,13 +25,23 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d
-
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U fcg -d postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
 
 volumes:
   pg_data:

@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="FCGLibCache" Version="1.0.1" />
     <PackageReference Include="FIAPCloudGames2026.Contracts" Version="1.0.0" />
     <PackageReference Include="MassTransit.RabbitMQ" Version="8.0.16" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.10" />

@@ -1,24 +1,50 @@
-# Est·gio 1: Build
+# ============================================
+# Stage 1: Build
+# ============================================
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copia e restaura dependÍncias (Camada de Cache)
-COPY ["src/UsersAPI.Web/UsersAPI.Web.csproj", "src/UsersAPI.Web/"]
-COPY ["src/UsersAPI.Infra/UsersAPI.Infra.csproj", "src/UsersAPI.Infra/"]
-COPY ["src/UsersAPI.Domain/UsersAPI.Domain.csproj", "src/UsersAPI.Domain/"]
-RUN dotnet restore "src/UsersAPI.Web/UsersAPI.Web.csproj"
+# Copiar arquivos de projeto e restaurar depend√™ncias
+COPY ["src/UsersAPI.Web/UsersAPI.Web.csproj", "UsersAPI.Web/"]
+COPY ["src/UsersAPI.Domain/UsersAPI.Domain.csproj", "UsersAPI.Domain/"]
+COPY ["src/UsersAPI.Infra/UsersAPI.Infra.csproj", "UsersAPI.Infra/"]
+RUN dotnet restore "UsersAPI.Web/UsersAPI.Web.csproj"
 
-# Copia tudo e publica
-COPY . .
-RUN dotnet publish -c Release -o /app/publish
+# Copiar c√≥digo fonte
+COPY src/ .
 
-# Est·gio 2: Runtime
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+# Build da aplica√ß√£o
+WORKDIR "/src/UsersAPI.Web"
+RUN dotnet build "UsersAPI.Web.csproj" -c Release -o /app/build
+
+# ============================================
+# Stage 2: Publish
+# ============================================
+FROM build AS publish
+RUN dotnet publish "UsersAPI.Web.csproj" -c Release -o /app/publish /p:UseAppHost=false
+
+# ============================================
+# Stage 3: Runtime
+# ============================================
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
-COPY --from=build /app/publish .
 
-# Vari·vel de ambiente padr„o
-ENV ASPNETCORE_URLS=http://+:80
+# Criar usu√°rio n√£o-root
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Copiar bin√°rios publicados
+COPY --from=publish /app/publish .
+
+# Expor porta
 EXPOSE 80
+EXPOSE 443
 
-ENTRYPOINT ["dotnet", "UsersAPI.dll"]
+# Trocar para usu√°rio n√£o-root
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost/health || exit 1
+
+# Entry point
+ENTRYPOINT ["dotnet", "UsersAPI.Web.dll"]

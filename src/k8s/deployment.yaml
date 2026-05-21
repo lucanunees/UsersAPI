@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: users-api
+  namespace: fcg-tech-fase-2
+  labels:
+    app: users-api
+    version: v1
+    component: api
+spec:
+  replicas: 2
+  
+  selector:
+    matchLabels:
+      app: users-api
+  
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  
+  template:
+    metadata:
+      labels:
+        app: users-api
+        version: v1
+    
+    spec:
+      # Security Context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      
+      containers:
+      - name: users-api
+        image: davidjmarinho/users-api:v1
+        imagePullPolicy: Always
+        
+        ports:
+        - containerPort: 80
+          name: http
+          protocol: TCP
+        
+        # ========================================
+        # Variáveis de Ambiente
+        # ========================================
+        env:
+        # ASP.NET Core
+        - name: ASPNETCORE_ENVIRONMENT
+          value: Production
+        - name: ASPNETCORE_URLS
+          value: http://+:80
+        
+        # Database Connection String
+        - name: ConnectionStrings__DefaultConnection
+          valueFrom:
+            secretKeyRef:
+              name: users-secret
+              key: connection-string
+        
+        # JWT Configuration
+        - name: Jwt__Issuer
+          valueFrom:
+            configMapKeyRef:
+              name: users-config
+              key: jwt-issuer
+        - name: Jwt__Audience
+          valueFrom:
+            configMapKeyRef:
+              name: users-config
+              key: jwt-audience
+        - name: Jwt__Key
+          valueFrom:
+            secretKeyRef:
+              name: users-secret
+              key: jwt-key
+        - name: Jwt__ExpirationInMinutes
+          valueFrom:
+            configMapKeyRef:
+              name: users-config
+              key: jwt-expiration
+        
+        # RabbitMQ
+        - name: RabbitMq__Host
+          value: rabbitmq
+        
+        # ========================================
+        # Resources
+        # ========================================
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        
+        # ========================================
+        # Health Checks
+        # ========================================
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        
+        # ========================================
+        # Startup Probe (para inicialização lenta)
+        # ========================================
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 30
+      
+      # ========================================
+      # Restart Policy
+      # ========================================
+      restartPolicy: Always

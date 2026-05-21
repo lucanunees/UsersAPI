@@ -70,7 +70,42 @@ namespace UsersAPI.Web.Endpoints
                 return Results.Unauthorized();
             });
 
+            // Health check endpoints
+            app.MapGet("/health", () => Results.Ok(new
+            {
+                status = "healthy",
+                timestamp = DateTime.UtcNow,
+                service = "users-api"
+            }))
+            .WithTags("Health")
+            .Produces(200);
 
+            app.MapGet("/health/ready", async (UserManager<User> userManager) =>
+            {
+                try
+                {
+                    // Verifica conectividade com o banco de dados
+                    var usersCount = userManager.Users.Count();
+                    return Results.Ok(new
+                    {
+                        status = "ready",
+                        timestamp = DateTime.UtcNow,
+                        database = "connected"
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return Results.Json(new
+                    {
+                        status = "not ready",
+                        timestamp = DateTime.UtcNow,
+                        error = ex.Message
+                    }, statusCode: 503);
+                }
+            })
+            .WithTags("Health")
+            .Produces(200)
+            .Produces(503);
         }
     }
 }

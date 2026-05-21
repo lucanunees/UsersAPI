@@ -1,12 +1,18 @@
+version: '3.8'
+
 services:
-  api:
+  # ========================================
+  # API Principal
+  # ========================================
+  users-api:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: users-api
     ports:
-      - "5000:80"
+      - "5001:80"
     environment:
+      # ASP.NET Core
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=postgres;Username=fcg;Password=fcgpw
     depends_on:
@@ -14,23 +20,27 @@ services:
         condition: service_healthy
 
   postgres:
-    image: postgres:16
-    container_name: fcg-postgres2
-    environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: fcg
-      POSTGRES_PASSWORD: fcgpw
+    image: postgres:15-alpine
+    container_name: users-postgres
     ports:
       - "5432:5432"
+    environment:
+      - POSTGRES_USER=${DB_USER:-fcg}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-fcgpw}
+      - POSTGRES_DB=fcg_users_db
+      - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fcg -d postgres"]
-      interval: 5s
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+
+networks:
+  users-network:
+    driver: bridge
 
   prometheus:
     image: prom/prometheus:latest

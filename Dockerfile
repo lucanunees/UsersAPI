@@ -1,41 +1,27 @@
-# ============================================
-# Stage 1: Build
-# ============================================
+# Estágio 1: Build
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copiar arquivos de projeto e restaurar dependências
-COPY ["src/UsersAPI.Web/UsersAPI.Web.csproj", "UsersAPI.Web/"]
-COPY ["src/UsersAPI.Domain/UsersAPI.Domain.csproj", "UsersAPI.Domain/"]
-COPY ["src/UsersAPI.Infra/UsersAPI.Infra.csproj", "UsersAPI.Infra/"]
-RUN dotnet restore "UsersAPI.Web/UsersAPI.Web.csproj"
+# Copia e restaura dependências
+COPY ["src/UsersAPI.Web/UsersAPI.Web.csproj", "src/UsersAPI.Web/"]
+COPY ["src/UsersAPI.Infra/UsersAPI.Infra.csproj", "src/UsersAPI.Infra/"]
+COPY ["src/UsersAPI.Domain/UsersAPI.Domain.csproj", "src/UsersAPI.Domain/"]
 
-# Copiar código fonte
-COPY src/ .
+RUN dotnet restore "src/UsersAPI.Web/UsersAPI.Web.csproj"
 
-# Build da aplicação
-WORKDIR "/src/UsersAPI.Web"
-RUN dotnet build "UsersAPI.Web.csproj" -c Release -o /app/build
+# Copia tudo
+COPY . .
 
-# ============================================
-# Stage 2: Publish
-# ============================================
-FROM build AS publish
-RUN dotnet publish "UsersAPI.Web.csproj" -c Release -o /app/publish /p:UseAppHost=false
+# Publica
+RUN dotnet publish "src/UsersAPI.Web/UsersAPI.Web.csproj" -c Release -o /app/publish
 
-# ============================================
-# Stage 3: Runtime
-# ============================================
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+# Estágio 2: Runtime
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
 
-# Criar usuário não-root
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+COPY --from=build /app/publish .
 
-# Copiar binários publicados
-COPY --from=publish /app/publish .
-
-# Expor porta
+ENV ASPNETCORE_URLS=http://+:80
 EXPOSE 80
 EXPOSE 443
 

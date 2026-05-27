@@ -1,6 +1,8 @@
 using MassTransit;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Prometheus;
+using RedisCache.Library.Extensions;
 using UsersAPI.Domain;
 using UsersAPI.Infra;
 using UsersAPI.Web.Endpoints;
@@ -13,7 +15,7 @@ builder.Services.AddScoped<AppDbContext, AppDbContext>();
 builder.Services.AddScoped<TokenService>();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-builder.Services.AddDbContext<AppDbContext>(options => 
+builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 builder.Services.AddIdentityCore<User>(options =>
@@ -50,6 +52,22 @@ builder.Services.AddMassTransit(x =>
 });
 # endregion
 
+// ─── Redis Cache via Kubernetes Secrets ────────────────────────
+var redisHost = Environment.GetEnvironmentVariable("REDIS_HOST") ?? "localhost";
+var redisPort = Environment.GetEnvironmentVariable("REDIS_PORT") ?? "6379";
+var redisPassword = Environment.GetEnvironmentVariable("REDIS_PASSWORD") ?? "";
+
+var redisConnectionString = string.IsNullOrEmpty(redisPassword)
+    ? $"{redisHost}:{redisPort}"
+    : $"{redisHost}:{redisPort},password={redisPassword},abortConnect=false";
+
+builder.Services.AddRedisCache(options =>
+{
+    options.ConnectionString = redisConnectionString;
+    options.KeyPrefix = "users:";
+    options.DefaultExpirationInMinutes = 30;
+    options.Enabled = true;
+});
 
 var app = builder.Build();
 
@@ -65,9 +83,12 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-
-
-
+// ─── Prometheus ────────────────────────────────────────────────
+app.UseHttpMetrics(options =>
+{
+    options.AddCustomLabel("app", context => "users-api");
+});
+app.MapMetrics();
 
 app.Run();
 

@@ -1,7 +1,9 @@
 ﻿using Contracts.IntegrationEvents;
 using MassTransit;
 using Microsoft.AspNetCore.Identity;
+using RedisCache.Library.Interfaces;
 using UsersAPI.Domain;
+using UsersAPI.Web.Metrics;
 using UsersAPI.Web.Services;
 
 namespace UsersAPI.Web.Endpoints
@@ -39,6 +41,8 @@ namespace UsersAPI.Web.Endpoints
 
                     await publishEndpoint.Publish(new UserCreatedEventV1(Guid.NewGuid(), DateTime.Now, user.Id, user.Email, user.FullName), ct);
 
+                    AppMetrics.UsersRegistered.Inc();
+
                     return Results.Created($"/api/users/{user.Id}", new
                     {
                         user.Id,
@@ -68,6 +72,38 @@ namespace UsersAPI.Web.Endpoints
                 }
 
                 return Results.Unauthorized();
+            });
+
+            group.MapGet("/{id:guid}", async (
+                Guid id,
+                UserManager<User> userManager,
+                ICacheService cacheService) =>
+            {
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+                var cacheKey = $"user:{id}";
+                var cachedUser = await cacheService.GetAsync<object>(cacheKey);
+
+                if (cachedUser is not null)
+                {
+                    AppMetrics.CacheHits.WithLabels("get_user").Inc();
+                    stopwatch.Stop();
+                    AppMetrics.RequestDuration.WithLabels("get_user").Observe(stopwatch.Elapsed.TotalSeconds);
+                    return Results.Ok(cachedUser);
+                }
+
+                AppMetrics.CacheMisses.WithLabels("get_user").Inc();
+
+                var user = await userManager.FindByIdAsync(id.ToString());
+                if (user is null)
+                    return Results.NotFound();
+
+                var userData = new { user.Id, user.Email, user.FullName };
+                await cacheService.SetAsync(cacheKey, userData, TimeSpan.FromMinutes(10));
+
+                stopwatch.Stop();
+                AppMetrics.RequestDuration.WithLabels("get_user").Observe(stopwatch.Elapsed.TotalSeconds);
+                return Results.Ok(userData);
             });
 
             // Health check endpoints

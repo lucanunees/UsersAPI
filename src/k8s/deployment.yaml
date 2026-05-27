@@ -25,6 +25,10 @@ spec:
       labels:
         app: users-api
         version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "80"
+        prometheus.io/path: "/metrics"
     
     spec:
       # Security Context
@@ -35,7 +39,7 @@ spec:
       
       containers:
       - name: users-api
-        image: davidjmarinho/users-api:v1
+        image: davidjmarinho/users-api:v2
         imagePullPolicy: Always
         
         ports:
@@ -85,6 +89,17 @@ spec:
         # RabbitMQ
         - name: RabbitMq__Host
           value: rabbitmq
+        
+        # Redis Cache
+        - name: REDIS_HOST
+          value: redis
+        - name: REDIS_PORT
+          value: "6379"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: password
         
         # ========================================
         # Resources

@@ -8,6 +8,8 @@ using UsersAPI.Infra;
 using UsersAPI.Web.Endpoints;
 using UsersAPI.Web.Extensions;
 using UsersAPI.Web.Services;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,6 +37,7 @@ builder.Services.AddDataProtection();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddControllers();
 
 # region MassTransit
 builder.Services.AddMassTransit(x =>

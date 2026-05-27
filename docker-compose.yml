@@ -14,45 +14,11 @@ services:
     environment:
       # ASP.NET Core
       - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=http://+:80
-      
-      # Database (PostgreSQL)
-      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=fcg_users_db;Username=${DB_USER:-fcg};Password=${DB_PASSWORD:-fcgpw}
-      
-      # JWT
-      - Jwt__Issuer=UsersAPI
-      - Jwt__Audience=TechChallengeApp
-      - Jwt__Key=ChaveSuperSecretaCom32Caracteres!
-      - Jwt__ExpirationInMinutes=60
-      
-      # RabbitMQ
-      - RabbitMq__Host=rabbitmq
-      
-      # Logging
-      - Logging__LogLevel__Default=Information
-      - Logging__LogLevel__Microsoft.AspNetCore=Warning
-    
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=postgres;Username=fcg;Password=fcgpw
     depends_on:
       postgres:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    
-    networks:
-      - users-network
-    
-    restart: unless-stopped
-    
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
-  # ========================================
-  # PostgreSQL (Banco de Dados)
-  # ========================================
   postgres:
     image: postgres:15-alpine
     container_name: users-postgres
@@ -64,33 +30,8 @@ services:
       - POSTGRES_DB=fcg_users_db
       - PGDATA=/var/lib/postgresql/data/pgdata
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-    networks:
-      - users-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fcg"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ========================================
-  # RabbitMQ (Message Broker)
-  # ========================================
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    container_name: users-rabbitmq
-    ports:
-      - "5672:5672"   # AMQP
-      - "15672:15672" # Management UI
-    environment:
-      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-admin}
-      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:-admin123}
-    volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
-    networks:
-      - users-network
-    restart: unless-stopped
+      - pg_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: rabbitmq-diagnostics -q ping
       interval: 10s
@@ -101,6 +42,16 @@ networks:
   users-network:
     driver: bridge
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+
 volumes:
-  postgres-data:
-  rabbitmq-data:
+  pg_data:

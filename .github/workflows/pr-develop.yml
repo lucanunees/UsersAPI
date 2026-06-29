@@ -47,13 +47,13 @@ jobs:
           dotnet-version: '8.0.x'
       
       - name: Restore dependencies
-        run: dotnet restore UsersAPI/UsersAPI.sln
+        run: dotnet restore UsersAPI.sln
       
       - name: Build
-        run: dotnet build UsersAPI/UsersAPI.sln --configuration Release --no-restore
+        run: dotnet build UsersAPI.sln --configuration Release --no-restore
       
       - name: Run Tests
-        run: dotnet test UsersAPI/UsersAPI.sln --configuration Release --no-build --verbosity normal
+        run: dotnet test UsersAPI.sln --configuration Release --no-build --verbosity normal
         env:
           ConnectionStrings__DefaultConnection: "Host=localhost;Port=5432;Username=${{ secrets.DB_USER }};Password=${{ secrets.DB_PASSWORD }};Database=usersapi"
           RabbitMq__Host: localhost

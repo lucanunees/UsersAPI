@@ -5,11 +5,10 @@ using Prometheus;
 using RedisCache.Library.Extensions;
 using UsersAPI.Domain;
 using UsersAPI.Infra;
+using UsersAPI.Infra.Mongo;
 using UsersAPI.Web.Endpoints;
 using UsersAPI.Web.Extensions;
 using UsersAPI.Web.Services;
-using OpenTelemetry.Metrics;
-using OpenTelemetry.Resources;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -71,6 +70,15 @@ builder.Services.AddRedisCache(options =>
     options.DefaultExpirationInMinutes = 30;
     options.Enabled = true;
 });
+
+// ─── MongoDB (perfil expandido do usuário) ──────────────────────
+var mongoHost = Environment.GetEnvironmentVariable("MONGO_HOST") ?? "localhost";
+var mongoPort = Environment.GetEnvironmentVariable("MONGO_PORT") ?? "27017";
+var mongoDb = Environment.GetEnvironmentVariable("MONGO_DB") ?? "users";
+var mongoConnectionString = $"mongodb://{mongoHost}:{mongoPort}";
+
+builder.Services.AddSingleton(new UsersMongoContext(mongoConnectionString, mongoDb));
+builder.Services.AddScoped<IUserProfileRepository, UserProfileRepository>();
 
 var app = builder.Build();
 

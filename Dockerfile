@@ -26,6 +26,7 @@ EXPOSE 80
 EXPOSE 443
 
 # Trocar para usuário não-root
+RUN useradd -m appuser
 USER appuser
 
 # Health check

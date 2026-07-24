@@ -3,6 +3,7 @@ using MassTransit;
 using Microsoft.AspNetCore.Identity;
 using RedisCache.Library.Interfaces;
 using UsersAPI.Domain;
+using UsersAPI.Infra.Mongo;
 using UsersAPI.Web.Metrics;
 using UsersAPI.Web.Services;
 
@@ -18,6 +19,7 @@ namespace UsersAPI.Web.Endpoints
                 RegisterRequest request,
                 UserManager<User> userManager,
                 IPublishEndpoint publishEndpoint,
+                IUserProfileRepository profileRepository,
                 CancellationToken ct) =>
                 {
 
@@ -38,6 +40,12 @@ namespace UsersAPI.Web.Endpoints
 
                     var roleToAssign = !string.IsNullOrEmpty(request.Role) ? request.Role : "User";
                     await userManager.AddToRoleAsync(user, roleToAssign);
+
+                    await profileRepository.UpsertAsync(new UserProfileDocument
+                    {
+                        UserId = user.Id.ToString(),
+                        CreatedAt = DateTime.UtcNow
+                    });
 
                     await publishEndpoint.Publish(new UserCreatedEventV1(Guid.NewGuid(), DateTime.Now, user.Id, user.Email, user.FullName), ct);
 
@@ -106,6 +114,66 @@ namespace UsersAPI.Web.Endpoints
                 return Results.Ok(userData);
             });
 
+            group.MapGet("/{id:guid}/profile", async (
+                Guid id,
+                IUserProfileRepository profileRepository,
+                ICacheService cacheService) =>
+            {
+                var cacheKey = $"profile:{id}";
+                var cached = await cacheService.GetAsync<UserProfileDto>(cacheKey);
+
+                if (cached is not null)
+                {
+                    AppMetrics.CacheHits.WithLabels("get_profile").Inc();
+                    return Results.Ok(cached);
+                }
+
+                AppMetrics.CacheMisses.WithLabels("get_profile").Inc();
+
+                var profile = await profileRepository.GetByUserIdAsync(id.ToString());
+                if (profile is null) return Results.NotFound();
+
+                var dto = new UserProfileDto
+                {
+                    UserId = profile.UserId,
+                    Bio = profile.Bio,
+                    AvatarUrl = profile.AvatarUrl,
+                    FavoriteGenres = profile.FavoriteGenres,
+                    Preferences = profile.Preferences
+                };
+                await cacheService.SetAsync(cacheKey, dto, TimeSpan.FromMinutes(10));
+
+                return Results.Ok(dto);
+            });
+
+            group.MapPut("/{id:guid}/profile", async (
+                Guid id,
+                UpdateProfileRequest request,
+                IUserProfileRepository profileRepository,
+                ICacheService cacheService) =>
+            {
+                var profile = await profileRepository.GetByUserIdAsync(id.ToString())
+                    ?? new UserProfileDocument { UserId = id.ToString(), CreatedAt = DateTime.UtcNow };
+
+                profile.Bio = request.Bio ?? profile.Bio;
+                profile.AvatarUrl = request.AvatarUrl ?? profile.AvatarUrl;
+                profile.FavoriteGenres = request.FavoriteGenres ?? profile.FavoriteGenres;
+                profile.Preferences = request.Preferences ?? profile.Preferences;
+                profile.UpdatedAt = DateTime.UtcNow;
+
+                await profileRepository.UpsertAsync(profile);
+                await cacheService.RemoveAsync($"profile:{id}");
+
+                return Results.Ok(new UserProfileDto
+                {
+                    UserId = profile.UserId,
+                    Bio = profile.Bio,
+                    AvatarUrl = profile.AvatarUrl,
+                    FavoriteGenres = profile.FavoriteGenres,
+                    Preferences = profile.Preferences
+                });
+            });
+
             // Health check endpoints
             app.MapGet("/health", () => Results.Ok(new
             {
@@ -143,5 +211,22 @@ namespace UsersAPI.Web.Endpoints
             .Produces(200)
             .Produces(503);
         }
+    }
+
+    public class UserProfileDto
+    {
+        public string UserId { get; set; } = string.Empty;
+        public string Bio { get; set; } = string.Empty;
+        public string AvatarUrl { get; set; } = string.Empty;
+        public List<string> FavoriteGenres { get; set; } = new();
+        public Dictionary<string, string> Preferences { get; set; } = new();
+    }
+
+    public class UpdateProfileRequest
+    {
+        public string? Bio { get; set; }
+        public string? AvatarUrl { get; set; }
+        public List<string>? FavoriteGenres { get; set; }
+        public Dictionary<string, string>? Preferences { get; set; }
     }
 }

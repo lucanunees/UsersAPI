@@ -72,10 +72,9 @@ builder.Services.AddRedisCache(options =>
 });
 
 // ─── MongoDB (perfil expandido do usuário) ──────────────────────
-var mongoHost = Environment.GetEnvironmentVariable("MONGO_HOST") ?? "localhost";
-var mongoPort = Environment.GetEnvironmentVariable("MONGO_PORT") ?? "27017";
 var mongoDb = Environment.GetEnvironmentVariable("MONGO_DB") ?? "users";
-var mongoConnectionString = $"mongodb://{mongoHost}:{mongoPort}";
+var mongoConnectionString = Environment.GetEnvironmentVariable("MONGO_CONNECTION_STRING")
+    ?? $"mongodb://{Environment.GetEnvironmentVariable("MONGO_HOST") ?? "localhost"}:{Environment.GetEnvironmentVariable("MONGO_PORT") ?? "27017"}";
 
 builder.Services.AddSingleton(new UsersMongoContext(mongoConnectionString, mongoDb));
 builder.Services.AddScoped<IUserProfileRepository, UserProfileRepository>();

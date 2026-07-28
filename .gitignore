@@ -10,7 +10,7 @@ obj/
 *.sln.docstates
 
 ## [ Entity Framework ]
-# Evita subir o log de migrações locais se não for necessário, 
+# Evita subir o log de migraï¿½ï¿½es locais se nï¿½o for necessï¿½rio, 
 # mas geralmente mantemos a pasta Migrations. 
 # Se usar SQLite local para testes:
 *.db
@@ -18,7 +18,7 @@ obj/
 
 ## [ Docker & Kubernetes ]
 .dockerignore
-# Não ignore o Dockerfile! Mas ignore arquivos temporários de build
+# Nï¿½o ignore o Dockerfile! Mas ignore arquivos temporï¿½rios de build
 .kube/
 *.log
 
@@ -34,10 +34,11 @@ obj/
 .DS_Store
 Thumbs.db
 
-## [ Segredos e Configurações Sensíveis ]
+## [ Segredos e Configuraï¿½ï¿½es Sensï¿½veis ]
 # IMPORTANTE: Nunca suba segredos reais!
 appsettings.Development.json
 appsettings.Production.json
-# Se você criar arquivos de secrets locais para o K8s:
+# Se vocï¿½ criar arquivos de secrets locais para o K8s:
 secrets.yaml.local
 *.pfx
+.env

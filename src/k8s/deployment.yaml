@@ -100,6 +100,18 @@ spec:
             secretKeyRef:
               name: redis-secret
               key: password
+
+        # MongoDB (perfil expandido do usuário)
+        - name: MONGO_CONNECTION_STRING
+          valueFrom:
+            secretKeyRef:
+              name: users-secret
+              key: mongo-connection-string
+        - name: MONGO_DB
+          valueFrom:
+            configMapKeyRef:
+              name: users-config
+              key: mongo-db
         
         # ========================================
         # Resources

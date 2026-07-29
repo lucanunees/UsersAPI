@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: users-api
-  namespace: fcg-tech-fase-2
+  namespace: fcg-tech-fase-4
   labels:
     app: users-api
     version: v1
@@ -39,7 +39,7 @@ spec:
       
       containers:
       - name: users-api
-        image: davidjmarinho/users-api:v2
+        image: 159924930744.dkr.ecr.us-east-1.amazonaws.com/usersapi:v6
         imagePullPolicy: Always
         
         ports:
@@ -51,6 +51,8 @@ spec:
         # Variáveis de Ambiente
         # ========================================
         env:
+        - name: Swagger__Enabled
+          value: "true"
         # ASP.NET Core
         - name: ASPNETCORE_ENVIRONMENT
           value: Production
@@ -63,6 +65,26 @@ spec:
             secretKeyRef:
               name: users-secret
               key: connection-string
+        - name: MONGO_DB
+          value: users
+
+        - name: MONGO_CONNECTION_STRING
+          valueFrom:
+            secretKeyRef:
+              name: users-mongodb-secret
+              key: connection-string
+        
+        - name: RabbitMq__Username
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secret
+              key: username
+
+        - name: RabbitMq__Password
+          valueFrom:
+            secretKeyRef:
+              name: rabbitmq-secret
+              key: password
         
         # JWT Configuration
         - name: Jwt__Issuer

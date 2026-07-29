@@ -15,8 +15,17 @@ services:
       # ASP.NET Core
       - ASPNETCORE_ENVIRONMENT=Development
       - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=postgres;Username=fcg;Password=fcgpw
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - MONGO_CONNECTION_STRING=${MONGO_CONNECTION_STRING:-mongodb+srv://joaopaulomoraescosta_db_user:p43MozqEkaPeqkRl@clusterfiap.63thrae.mongodb.net/?appName=ClusterFiap}
+      - MONGO_DB=${MONGO_DB:-users}
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
 
   postgres:
@@ -33,14 +42,38 @@ services:
       - pg_data:/var/lib/postgresql/data
       - ./postgres/init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: rabbitmq-diagnostics -q ping
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-fcg} -d fcg_users_db"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-networks:
-  users-network:
-    driver: bridge
+  redis:
+    image: redis:7-alpine
+    container_name: users-redis
+    ports:
+      - "6382:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: users-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin123
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   prometheus:
     image: prom/prometheus:latest
@@ -49,9 +82,15 @@ networks:
       - "9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
+    depends_on:
+      - users-api
+
+networks:
+  users-network:
+    driver: bridge
 
 volumes:
   pg_data:
+  redis_data:

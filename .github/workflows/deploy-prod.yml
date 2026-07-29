@@ -1,0 +1,168 @@
+name: CD - Prod
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: usersapi
+  K8S_DEPLOYMENT: users-api
+  K8S_CONTAINER: users-api
+
+jobs:
+  deploy-prod:
+    runs-on: ubuntu-latest
+    environment: prod
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ${{ secrets.DB_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          POSTGRES_DB: usersapi
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      rabbitmq:
+        image: rabbitmq:3.13-management
+        env:
+          RABBITMQ_DEFAULT_USER: ${{ secrets.RABBITMQ_USER }}
+          RABBITMQ_DEFAULT_PASS: ${{ secrets.RABBITMQ_PASS }}
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5672:5672
+          - 15672:15672
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore UsersAPI.sln
+
+      - name: Build
+        run: dotnet build UsersAPI.sln --configuration Release --no-restore
+
+      - name: Run Tests
+        run: dotnet test UsersAPI.sln --configuration Release --no-build --verbosity normal
+        env:
+          ConnectionStrings__DefaultConnection: "Host=localhost;Port=5432;Username=${{ secrets.DB_USER }};Password=${{ secrets.DB_PASSWORD }};Database=usersapi"
+          RabbitMq__Host: localhost
+          RabbitMq__Username: ${{ secrets.RABBITMQ_USER }}
+          RabbitMq__Password: ${{ secrets.RABBITMQ_PASS }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name "$EKS_CLUSTER_NAME" \
+            --region "$AWS_REGION"
+
+      - name: Resolve image tags
+        id: image
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          SHORT_SHA="${GITHUB_SHA::8}"
+          IMAGE_REGISTRY="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            IMAGE_RELEASE_TAG="${GITHUB_REF_NAME}"
+          else
+            IMAGE_RELEASE_TAG="prod-${GITHUB_RUN_NUMBER}"
+          fi
+          echo "image_sha=${IMAGE_REGISTRY}/${ECR_REPOSITORY}:sha-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "image_prod_latest=${IMAGE_REGISTRY}/${ECR_REPOSITORY}:prod-latest" >> "$GITHUB_OUTPUT"
+          echo "image_release=${IMAGE_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure EKS access entry
+        run: |
+          if ! aws eks describe-access-entry \
+            --cluster-name "$EKS_CLUSTER_NAME" \
+            --principal-arn "${{ secrets.AWS_ROLE_TO_ASSUME }}" >/dev/null 2>&1; then
+            aws eks create-access-entry \
+              --cluster-name "$EKS_CLUSTER_NAME" \
+              --principal-arn "${{ secrets.AWS_ROLE_TO_ASSUME }}"
+          fi
+
+      - name: Associate namespace access policy
+        run: |
+          if ! aws eks list-associated-access-policies \
+            --cluster-name "$EKS_CLUSTER_NAME" \
+            --principal-arn "${{ secrets.AWS_ROLE_TO_ASSUME }}" \
+            --query "associatedAccessPolicies[?policyArn=='arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy']" \
+            --output text | grep -q .; then
+            aws eks associate-access-policy \
+              --cluster-name "$EKS_CLUSTER_NAME" \
+              --principal-arn "${{ secrets.AWS_ROLE_TO_ASSUME }}" \
+              --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSEditPolicy \
+              --access-scope type=namespace,namespaces="$K8S_NAMESPACE"
+          fi
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.image_sha }}
+            ${{ steps.image.outputs.image_prod_latest }}
+            ${{ steps.image.outputs.image_release }}
+
+      - name: Update deployment with rollback
+        run: |
+          kubectl config current-context
+          CURRENT_IMAGE="$(kubectl get deployment "$K8S_DEPLOYMENT" -n "$K8S_NAMESPACE" -o jsonpath='{.spec.template.spec.containers[?(@.name=="users-api")].image}')"
+          echo "Current image: ${CURRENT_IMAGE}"
+          kubectl set image deployment/$K8S_DEPLOYMENT $K8S_CONTAINER="${{ steps.image.outputs.image_release }}" -n "$K8S_NAMESPACE"
+
+          if ! kubectl rollout status deployment/$K8S_DEPLOYMENT -n "$K8S_NAMESPACE" --timeout=10m; then
+            echo "Rollout failed, reverting deployment"
+            kubectl rollout undo deployment/$K8S_DEPLOYMENT -n "$K8S_NAMESPACE"
+            kubectl rollout status deployment/$K8S_DEPLOYMENT -n "$K8S_NAMESPACE" --timeout=10m
+            exit 1
+          fi
+
+      - name: Publish summary
+        run: |
+          {
+            echo "## Production deployment summary"
+            echo "- Cluster: ${EKS_CLUSTER_NAME}"
+            echo "- Namespace: ${K8S_NAMESPACE}"
+            echo "- Deployment: ${K8S_DEPLOYMENT}"
+            echo "- Image: ${{ steps.image.outputs.image_release }}"
+            echo "- Commit: ${GITHUB_SHA}"
+          } >> "$GITHUB_STEP_SUMMARY"

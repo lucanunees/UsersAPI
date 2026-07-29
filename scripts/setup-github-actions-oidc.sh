@@ -89,6 +89,14 @@ cat > "$PERMISSIONS_POLICY_FILE" <<EOF
       "Resource": "arn:aws:ecr:${AWS_REGION}:${ACCOUNT_ID}:repository/usersapi"
     },
     {
+      "Sid": "EksListClusters",
+      "Effect": "Allow",
+      "Action": [
+        "eks:ListClusters"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "EksClusterAccess",
       "Effect": "Allow",
       "Action": [

@@ -43,10 +43,14 @@ builder.Services.AddMassTransit(x =>
 {
     x.UsingRabbitMq((context, cfg) =>
     {
-        cfg.Host(builder.Configuration["RabbitMq:Host"] ?? "localhost", "/", h =>
+        var host = builder.Configuration["RabbitMq:Host"];
+        var username = builder.Configuration["RabbitMq:Username"];
+        var password = builder.Configuration["RabbitMq:Password"];
+
+        cfg.Host(host, "/", h =>
         {
-            h.Username("admin");
-            h.Password("admin123");
+            h.Username(username);
+            h.Password(password);
         });
 
         cfg.ConfigureEndpoints(context);
@@ -79,19 +83,25 @@ var mongoConnectionString = Environment.GetEnvironmentVariable("MONGO_CONNECTION
 builder.Services.AddSingleton(new UsersMongoContext(mongoConnectionString, mongoDb));
 builder.Services.AddScoped<IUserProfileRepository, UserProfileRepository>();
 
+builder.Services.AddHealthChecks();
+
 var app = builder.Build();
 
 await app.ApplyMigrationsAndSeed();
 app.MapUserEndpoints();
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() ||
+    builder.Configuration.GetValue<bool>("Swagger:Enabled"))
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsProduction())
+{
+    app.UseHttpsRedirection();
+}
 
 // ─── Prometheus ────────────────────────────────────────────────
 app.UseHttpMetrics(options =>
@@ -99,6 +109,9 @@ app.UseHttpMetrics(options =>
     options.AddCustomLabel("app", context => "users-api");
 });
 app.MapMetrics();
+
+app.MapHealthChecks("/health");
+app.MapHealthChecks("/health/ready");
 
 app.Run();
 
